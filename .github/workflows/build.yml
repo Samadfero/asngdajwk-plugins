@@ -77,6 +77,8 @@ jobs:
           if [ -z "${REPO_CREDS:-}" ]; then
             export REPO_CREDS="x-access-token:${GITHUB_TOKEN}"
           fi
+          # Packager runs git clone over HTTPS; private repos need credentials on the URL.
+          git config --global url."https://${REPO_CREDS}@github.com/".insteadOf "https://github.com/"
           java -XX:+UseParallelGC -cp package.jar net.runelite.pluginhub.packager.Packager
           if [ ! -d /tmp/jars ] || [ -z "$(find /tmp/jars -name '*.jar' -print -quit)" ]; then
             echo "::error::No plugin JARs were built. Private plugin repos need secret REPO_CREDS = Samadfero:ghp_YOUR_TOKEN (PAT with repo scope)."
