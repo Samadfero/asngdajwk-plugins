@@ -98,7 +98,7 @@ jobs:
           name: jars
           path: /tmp/jars
           retention-days: 1
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   publish-pages:
     needs: build
@@ -131,7 +131,6 @@ jobs:
           path: /tmp/manifest_diff_download
 
       - uses: actions/download-artifact@v4
-        continue-on-error: true
         with:
           name: jars
           path: /tmp/jars_download
@@ -142,10 +141,9 @@ jobs:
           MANIFEST_FILE=$(find /tmp/manifest_diff_download -type f | head -1)
           test -n "$MANIFEST_FILE"
           cp "$MANIFEST_FILE" /tmp/manifest_diff
-          mkdir -p /tmp/jars hub-site/jar
-          if [ -d /tmp/jars_download ]; then
-            find /tmp/jars_download -name '*.jar' -exec cp -v {} hub-site/jar/ \;
-          fi
+          mkdir -p /tmp/jars hub-site/jar hub-site/manifest hub-site/icon
+          find /tmp/jars_download -name '*.jar' -exec cp -v {} hub-site/jar/ \;
+          test "$(find hub-site/jar -name '*.jar' | wc -l)" -gt 0
 
       - name: Install rclone
         run: |
@@ -176,8 +174,12 @@ jobs:
         run: |
           set -eux
           java -XX:+UseParallelGC -cp upload.jar net.runelite.pluginhub.uploader.Uploader
+          find /tmp/jars_download -name '*.jar' -exec cp -v {} hub-site/jar/ \;
           ls -laR hub-site
           test -f hub-site/manifest/$(cat plugin-hub/runelite.version | tr -d '\n\r')_lite.js
+          JAR_FILE=$(find hub-site/jar -name 'eop-clan-indicators_*.jar' | head -1)
+          test -n "$JAR_FILE"
+          test "$(wc -c < "$JAR_FILE")" -gt 10000
 
       - name: Stop WebDAV
         if: always()
