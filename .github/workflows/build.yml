@@ -98,6 +98,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin-hub
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -114,23 +118,49 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: manifest_diff
-          path: /tmp/manifest_diff
+          path: /tmp/manifest_diff_download
 
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: jars
-          path: /tmp/jars
+          path: /tmp/jars_download
 
-      - name: Sign and stage hub files
-        env:
-          SIGNING_KEY: ${{ secrets.EOPLITE_SIGNING_KEY }}
-          REPO_ROOT: file:${{ github.workspace }}/hub-site/
+      - name: Prepare artifacts for uploader
+        run: |
+          set -eux
+          MANIFEST_FILE=$(find /tmp/manifest_diff_download -type f | head -1)
+          test -n "$MANIFEST_FILE"
+          cp "$MANIFEST_FILE" /tmp/manifest_diff
+          mkdir -p /tmp/jars hub-site/jar
+          if [ -d /tmp/jars_download ]; then
+            find /tmp/jars_download -name '*.jar' -exec cp -v {} hub-site/jar/ \;
+          fi
+
+      - name: Start local WebDAV (writes signed manifests into hub-site)
         run: |
           set -eux
           mkdir -p hub-site
+          docker run -d --rm --name eoplite-webdav -p 8080:80 \
+            -e AUTH_TYPE=Basic -e USERNAME=local -e PASSWORD=local \
+            -v "$GITHUB_WORKSPACE/hub-site:/var/lib/dav" \
+            bytemark/webdav
+          sleep 5
+
+      - name: Sign and stage hub manifests
+        env:
+          SIGNING_KEY: ${{ secrets.EOPLITE_SIGNING_KEY }}
+          REPO_CREDS: "local:local"
+          REPO_ROOT: "http://127.0.0.1:8080/"
+          PACKAGE_IS_PR: "false"
+        run: |
+          set -eux
           java -XX:+UseParallelGC -cp upload.jar net.runelite.pluginhub.uploader.Uploader
           ls -laR hub-site
+
+      - name: Stop WebDAV
+        if: always()
+        run: docker stop eoplite-webdav || true
 
       - uses: actions/configure-pages@v5
 
