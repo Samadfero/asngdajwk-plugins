@@ -65,13 +65,16 @@ jobs:
           ls -la plugin-hub/plugins/
 
       - name: Package plugins
+        env:
+          FORCE_BUILD: ALL
+          # Required by Packager (non-null). Upload happens in publish-pages, not here.
+          REPO_CREDS: "local:local"
+          PACKAGE_IS_PR: "false"
         run: |
           set -eux
           export FORCE_BUILD=ALL
           export PACKAGE_COMMIT_RANGE=""
           java -XX:+UseParallelGC -cp package.jar net.runelite.pluginhub.packager.Packager
-        env:
-          FORCE_BUILD: ALL
 
       - uses: actions/upload-artifact@v4
         with:
