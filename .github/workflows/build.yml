@@ -67,14 +67,22 @@ jobs:
       - name: Package plugins
         env:
           FORCE_BUILD: ALL
-          # PAT with repo read scope, format: Samadfero:ghp_xxxx (secret REPO_CREDS on this repo)
           REPO_CREDS: ${{ secrets.REPO_CREDS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_IS_PR: "false"
         run: |
           set -eux
           export FORCE_BUILD=ALL
           export PACKAGE_COMMIT_RANGE=""
+          if [ -z "${REPO_CREDS:-}" ]; then
+            export REPO_CREDS="x-access-token:${GITHUB_TOKEN}"
+          fi
           java -XX:+UseParallelGC -cp package.jar net.runelite.pluginhub.packager.Packager
+          if [ ! -d /tmp/jars ] || [ -z "$(find /tmp/jars -name '*.jar' -print -quit)" ]; then
+            echo "::error::No plugin JARs were built. Private plugin repos need secret REPO_CREDS = Samadfero:ghp_YOUR_TOKEN (PAT with repo scope)."
+            exit 1
+          fi
+          ls -la /tmp/jars/
 
       - uses: actions/upload-artifact@v4
         with:
