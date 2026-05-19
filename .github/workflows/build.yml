@@ -1,0 +1,154 @@
+# Builds EOPLite hub plugins. Optional publish job deploys to GitHub Pages.
+#
+# WARNING: GitHub Pages is PUBLIC — anyone with the URL can download plugin JARs.
+# For a truly hidden hub, use private repos + built-in plugins (see EOPLITE_HUB_SETUP.md)
+# or host on your own HTTPS server without Pages.
+#
+# Secrets: EOPLITE_SIGNING_KEY — contents of keys/eoplite-signing-key.pem
+
+name: Build EOPLite Plugin Hub
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      FORCE_BUILD:
+        description: "Plugins to build (comma-separated internal names) or ALL"
+        required: false
+        default: "ALL"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: eoplite-plugin-hub-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: plugin-hub
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Fetch plugin-hub tooling
+        env:
+          PACKAGER_URL: https://github.com/runelite/plugin-hub-tooling/releases/download/v1/bundle.tar.zst
+        run: |
+          set -eux
+          curl --location --fail --retry 4 --max-time 120 -o bundle.tar.zst "$PACKAGER_URL"
+          tar xf bundle.tar.zst
+
+      - uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            ~/.gradle/caches/
+            api/
+          key: eoplite-hub-deps-${{ hashFiles('plugin-hub/runelite.version', 'bundle.tar.zst') }}
+
+      - name: Prepare API cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: ./prepare.sh
+
+      - name: Package plugins
+        working-directory: ${{ github.workspace }}
+        env:
+          FORCE_BUILD: ${{ github.event.inputs.FORCE_BUILD || 'ALL' }}
+          COMMIT_BEFORE: ${{ github.event.before }}
+          COMMIT_AFTER: ${{ github.event.after }}
+        run: |
+          set -eux
+          if [ -n "${FORCE_BUILD:-}" ] && [ "${FORCE_BUILD}" != "" ]; then
+            export FORCE_BUILD
+          fi
+          if [ -n "${COMMIT_BEFORE:-}" ] && [ "${COMMIT_BEFORE}" != "0000000000000000000000000000000000000000" ]; then
+            export PACKAGE_COMMIT_RANGE="${COMMIT_BEFORE}...${COMMIT_AFTER}"
+          else
+            export PACKAGE_COMMIT_RANGE=""
+          fi
+          java -XX:+UseParallelGC -cp package.jar net.runelite.pluginhub.packager.Packager
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest_diff
+          path: /tmp/manifest_diff
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jars
+          path: /tmp/jars
+          if-no-files-found: ignore
+          retention-days: 1
+
+  # Disabled by default — GitHub Pages exposes plugin JARs publicly.
+  # To enable: set repository variable ENABLE_PUBLIC_PAGES=true
+  publish:
+    needs: build
+    if: vars.ENABLE_PUBLIC_PAGES == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          path: plugin-hub
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Fetch plugin-hub tooling
+        env:
+          PACKAGER_URL: https://github.com/runelite/plugin-hub-tooling/releases/download/v1/bundle.tar.zst
+        run: |
+          set -eux
+          curl --location --fail --retry 4 --max-time 120 -o bundle.tar.zst "$PACKAGER_URL"
+          tar xf bundle.tar.zst
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest_diff
+          path: /tmp/manifest_diff
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: jars
+          path: /tmp/jars
+          continue-on-error: true
+
+      - name: Sign and stage hub files
+        env:
+          SIGNING_KEY: ${{ secrets.EOPLITE_SIGNING_KEY }}
+          REPO_ROOT: file:${{ github.workspace }}/hub-site/
+        run: |
+          set -eux
+          mkdir -p hub-site
+          java -XX:+UseParallelGC -cp upload.jar net.runelite.pluginhub.uploader.Uploader
+          ls -laR hub-site || true
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: hub-site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
