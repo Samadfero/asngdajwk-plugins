@@ -1,10 +1,8 @@
-# Builds EOPLite hub plugins. Optional publish job deploys to GitHub Pages.
+# Builds EOPLite hub plugins and publishes to GitHub Pages when enabled.
 #
-# WARNING: GitHub Pages is PUBLIC — anyone with the URL can download plugin JARs.
-# For a truly hidden hub, use private repos + built-in plugins (see EOPLITE_HUB_SETUP.md)
-# or host on your own HTTPS server without Pages.
-#
-# Secrets: EOPLITE_SIGNING_KEY — contents of keys/eoplite-signing-key.pem
+# Required secret:  EOPLITE_SIGNING_KEY  (full eoplite-signing-key.pem)
+# Required variable: ENABLE_PUBLIC_PAGES = true
+# Optional variable: DEPLOY_TO_VPS = true + VPS_* secrets for VPS deploy
 
 name: Build EOPLite Plugin Hub
 
@@ -12,11 +10,6 @@ on:
   push:
     branches: [master, main]
   workflow_dispatch:
-    inputs:
-      FORCE_BUILD:
-        description: "Plugins to build (comma-separated internal names) or ALL"
-        required: false
-        default: "ALL"
 
 permissions:
   contents: read
@@ -24,7 +17,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: eoplite-plugin-hub-pages
+  group: asngdajwk-plugins-deploy
   cancel-in-progress: true
 
 jobs:
@@ -63,38 +56,29 @@ jobs:
 
       - name: Package plugins
         working-directory: ${{ github.workspace }}
-        env:
-          FORCE_BUILD: ${{ github.event.inputs.FORCE_BUILD || 'ALL' }}
-          COMMIT_BEFORE: ${{ github.event.before }}
-          COMMIT_AFTER: ${{ github.event.after }}
         run: |
           set -eux
-          if [ -n "${FORCE_BUILD:-}" ] && [ "${FORCE_BUILD}" != "" ]; then
-            export FORCE_BUILD
-          fi
-          if [ -n "${COMMIT_BEFORE:-}" ] && [ "${COMMIT_BEFORE}" != "0000000000000000000000000000000000000000" ]; then
-            export PACKAGE_COMMIT_RANGE="${COMMIT_BEFORE}...${COMMIT_AFTER}"
-          else
-            export PACKAGE_COMMIT_RANGE=""
-          fi
+          export FORCE_BUILD=ALL
+          export PACKAGE_COMMIT_RANGE=""
           java -XX:+UseParallelGC -cp package.jar net.runelite.pluginhub.packager.Packager
 
       - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
         with:
           name: manifest_diff
           path: /tmp/manifest_diff
           retention-days: 1
 
       - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
         with:
           name: jars
           path: /tmp/jars
-          if-no-files-found: ignore
           retention-days: 1
 
-  # Disabled by default — GitHub Pages exposes plugin JARs publicly.
-  # To enable: set repository variable ENABLE_PUBLIC_PAGES=true
-  publish:
+  publish-pages:
     needs: build
     if: vars.ENABLE_PUBLIC_PAGES == 'true'
     runs-on: ubuntu-24.04
@@ -102,11 +86,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          path: plugin-hub
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -126,10 +105,10 @@ jobs:
           path: /tmp/manifest_diff
 
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: jars
           path: /tmp/jars
-          continue-on-error: true
 
       - name: Sign and stage hub files
         env:
@@ -139,16 +118,13 @@ jobs:
           set -eux
           mkdir -p hub-site
           java -XX:+UseParallelGC -cp upload.jar net.runelite.pluginhub.uploader.Uploader
-          ls -laR hub-site || true
+          ls -laR hub-site
 
-      - name: Setup GitHub Pages
-        uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v5
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: hub-site
 
-      - name: Deploy to GitHub Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
