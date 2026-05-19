@@ -175,11 +175,30 @@ jobs:
           set -eux
           java -XX:+UseParallelGC -cp upload.jar net.runelite.pluginhub.uploader.Uploader
           find /tmp/jars_download -name '*.jar' -exec cp -v {} hub-site/jar/ \;
+          python3 << 'PY'
+          import json
+          import pathlib
+          import struct
+
+          version = pathlib.Path("plugin-hub/runelite.version").read_text().strip()
+          manifest_path = pathlib.Path(f"hub-site/manifest/{version}_lite.js")
+          data = manifest_path.read_bytes()
+          siglen = struct.unpack(">I", data[:4])[0]
+          manifest = json.loads(data[4 + siglen :].decode())
+
+          jar_dir = pathlib.Path("hub-site/jar")
+          for jar in manifest.get("jars", []):
+              plain = jar_dir / f"{jar['internalName']}.jar"
+              hashed = jar_dir / f"{jar['internalName']}_{jar['jarHash']}.jar"
+              if plain.exists():
+                  plain.rename(hashed)
+              if not hashed.exists():
+                  raise SystemExit(f"missing jar file for {jar['internalName']}")
+              if hashed.stat().st_size < 10000:
+                  raise SystemExit(f"jar too small: {hashed}")
+          PY
           ls -laR hub-site
           test -f hub-site/manifest/$(cat plugin-hub/runelite.version | tr -d '\n\r')_lite.js
-          JAR_FILE=$(find hub-site/jar -name 'eop-clan-indicators_*.jar' | head -1)
-          test -n "$JAR_FILE"
-          test "$(wc -c < "$JAR_FILE")" -gt 10000
 
       - name: Stop WebDAV
         if: always()
