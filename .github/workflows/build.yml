@@ -67,8 +67,8 @@ jobs:
       - name: Package plugins
         env:
           FORCE_BUILD: ALL
-          # Required by Packager (non-null). Upload happens in publish-pages, not here.
-          REPO_CREDS: "local:local"
+          # PAT with repo read scope, format: Samadfero:ghp_xxxx (secret REPO_CREDS on this repo)
+          REPO_CREDS: ${{ secrets.REPO_CREDS }}
           PACKAGE_IS_PR: "false"
         run: |
           set -eux
