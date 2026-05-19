@@ -1,8 +1,7 @@
 # Builds EOPLite hub plugins and publishes to GitHub Pages when enabled.
 #
-# Required secret:  EOPLITE_SIGNING_KEY  (full eoplite-signing-key.pem)
-# Required variable: ENABLE_PUBLIC_PAGES = true
-# Optional variable: DEPLOY_TO_VPS = true + VPS_* secrets for VPS deploy
+# Secrets:  EOPLITE_SIGNING_KEY (full eoplite-signing-key.pem)
+# Variables: ENABLE_PUBLIC_PAGES = true
 
 name: Build EOPLite Plugin Hub
 
@@ -41,6 +40,9 @@ jobs:
           set -eux
           curl --location --fail --retry 4 --max-time 120 -o bundle.tar.zst "$PACKAGER_URL"
           tar xf bundle.tar.zst
+          ls -la
+          ls -la plugin-hub/
+          cat plugin-hub/runelite.version
 
       - uses: actions/cache@v4
         id: cache-deps
@@ -54,29 +56,36 @@ jobs:
         if: steps.cache-deps.outputs.cache-hit != 'true'
         run: ./prepare.sh
 
+      - name: Prepare plugins directory
+        run: |
+          mkdir -p plugin-hub/plugins
+          # Remove anything that is not a real plugin manifest (no extension)
+          find plugin-hub/plugins -type f -name '*.*' -delete
+          find plugin-hub/plugins -type f -name '.*' -delete
+          ls -la plugin-hub/plugins/
+
       - name: Package plugins
-        working-directory: ${{ github.workspace }}
         run: |
           set -eux
           export FORCE_BUILD=ALL
           export PACKAGE_COMMIT_RANGE=""
           java -XX:+UseParallelGC -cp package.jar net.runelite.pluginhub.packager.Packager
+        env:
+          FORCE_BUILD: ALL
 
       - uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
         with:
           name: manifest_diff
           path: /tmp/manifest_diff
           retention-days: 1
+          if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
-        if: always()
-        continue-on-error: true
         with:
           name: jars
           path: /tmp/jars
           retention-days: 1
+          if-no-files-found: ignore
 
   publish-pages:
     needs: build
