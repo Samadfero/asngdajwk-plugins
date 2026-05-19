@@ -137,15 +137,25 @@ jobs:
             find /tmp/jars_download -name '*.jar' -exec cp -v {} hub-site/jar/ \;
           fi
 
-      - name: Start local WebDAV (writes signed manifests into hub-site)
+      - name: Install rclone
         run: |
           set -eux
-          mkdir -p hub-site
-          docker run -d --rm --name eoplite-webdav -p 8080:80 \
-            -e AUTH_TYPE=Basic -e USERNAME=local -e PASSWORD=local \
-            -v "$GITHUB_WORKSPACE/hub-site:/var/lib/dav" \
-            bytemark/webdav
-          sleep 5
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+          rclone version
+
+      - name: Start WebDAV (rclone writes into hub-site)
+        run: |
+          set -eux
+          mkdir -p hub-site/manifest hub-site/jar hub-site/icon
+          nohup rclone serve webdav hub-site \
+            --addr 127.0.0.1:8080 \
+            --user local \
+            --pass local \
+            --dir-cache-time 0s \
+            > /tmp/rclone-webdav.log 2>&1 &
+          echo $! > /tmp/rclone-webdav.pid
+          sleep 3
+          curl -sf -u local:local http://127.0.0.1:8080/ || (cat /tmp/rclone-webdav.log && exit 1)
 
       - name: Sign and stage hub manifests
         env:
@@ -157,10 +167,12 @@ jobs:
           set -eux
           java -XX:+UseParallelGC -cp upload.jar net.runelite.pluginhub.uploader.Uploader
           ls -laR hub-site
+          test -f hub-site/manifest/$(cat plugin-hub/runelite.version | tr -d '\n\r')_lite.js
 
       - name: Stop WebDAV
         if: always()
-        run: docker stop eoplite-webdav || true
+        run: |
+          kill "$(cat /tmp/rclone-webdav.pid)" 2>/dev/null || true
 
       - uses: actions/configure-pages@v5
 
