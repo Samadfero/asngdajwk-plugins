@@ -64,6 +64,33 @@ jobs:
           find plugin-hub/plugins -type f -name '.*' -delete
           ls -la plugin-hub/plugins/
 
+      - name: Verify access to private plugin repos
+        env:
+          REPO_CREDS: ${{ secrets.REPO_CREDS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          if [ -z "${REPO_CREDS:-}" ]; then
+            CREDS="x-access-token:${GITHUB_TOKEN}"
+            echo "::warning::REPO_CREDS is not set; only public repos are guaranteed to work."
+          else
+            CREDS="${REPO_CREDS}"
+          fi
+          for manifest in plugin-hub/plugins/*; do
+            [ -f "$manifest" ] || continue
+            plugin="$(basename "$manifest")"
+            repo="$(grep '^repository=' "$manifest" | cut -d= -f2- | tr -d '\r')"
+            commit="$(grep '^commit=' "$manifest" | cut -d= -f2- | tr -d '\r')"
+            repo_path="${repo#https://github.com/}"
+            repo_path="${repo_path#http://github.com/}"
+            repo_path="${repo_path%.git}"
+            echo "Checking ${plugin} -> github.com/${repo_path} @ ${commit}"
+            if ! git ls-remote "https://${CREDS}@github.com/${repo_path}.git" "${commit}" >/dev/null 2>&1; then
+              echo "::error::Cannot access private plugin repo for '${plugin}' (github.com/${repo_path}). Your REPO_CREDS secret must be Samadfero:ghp_xxx using a classic PAT with 'repo' scope, OR a fine-grained PAT that explicitly includes ${repo_path} (new private repos are often missing)."
+              exit 1
+            fi
+          done
+
       - name: Package plugins
         env:
           FORCE_BUILD: ALL
