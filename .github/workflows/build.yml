@@ -79,12 +79,22 @@ jobs:
           fi
           # Packager runs git clone over HTTPS; private repos need credentials on the URL.
           git config --global url."https://${REPO_CREDS}@github.com/".insteadOf "https://github.com/"
+          EXPECTED_PLUGINS=$(find plugin-hub/plugins -maxdepth 1 -type f ! -name '.*' | wc -l)
+          echo "Expected plugin manifests: ${EXPECTED_PLUGINS}"
+          if [ -z "${REPO_CREDS:-}" ]; then
+            echo "::warning::REPO_CREDS secret is not set; using GITHUB_TOKEN (cannot clone other private repos)."
+          fi
           java -XX:+UseParallelGC -cp package.jar net.runelite.pluginhub.packager.Packager
           if [ ! -d /tmp/jars ] || [ -z "$(find /tmp/jars -name '*.jar' -print -quit)" ]; then
-            echo "::error::No plugin JARs were built. Private plugin repos need secret REPO_CREDS = Samadfero:ghp_YOUR_TOKEN (PAT with repo scope)."
+            echo "::error::No plugin JARs were built. Private plugin repos need secret REPO_CREDS = Samadfero:ghp_YOUR_TOKEN (classic PAT, repo scope)."
             exit 1
           fi
+          BUILT_JARS=$(find /tmp/jars -name '*.jar' | wc -l)
           ls -la /tmp/jars/
+          if [ "${BUILT_JARS}" -ne "${EXPECTED_PLUGINS}" ]; then
+            echo "::error::Built ${BUILT_JARS} JAR(s) but hub lists ${EXPECTED_PLUGINS} plugin(s). Check logs above for clone/compile failures (often REPO_CREDS or a new private repo missing from a fine-grained PAT)."
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
