@@ -9,6 +9,7 @@ GitHub Actions must clone:
 - `Samadfero/eoplite-clan-indicators` (private)
 - `Samadfero/eoplite-plus-one-highlighter` (private)
 - `Samadfero/clan-hall-exporter` (private)
+- `Samadfero/eoplite-profiles` (private)
 
 `GITHUB_TOKEN` alone **cannot** read other private repos.
 
@@ -19,7 +20,7 @@ GitHub Actions must clone:
 3. `asngdajwk-plugins` → **Settings** → **Secrets and variables** → **Actions** → **REPO_CREDS**
 4. Value: `Samadfero:ghp_PASTE_TOKEN_HERE` (username, colon, token — no spaces)
 
-If you use a **fine-grained** token instead, you must add **each** plugin repo manually. When you create `clan-hall-exporter`, add it to the token or the hub build will skip it.
+If you use a **fine-grained** token instead, you must add **each** plugin repo manually. When you create a new plugin repo (e.g. `clan-hall-exporter`, `eoplite-profiles`), add it to the token or the hub build will fail.
 
 ### After updating the secret
 
