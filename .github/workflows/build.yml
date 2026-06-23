@@ -245,7 +245,7 @@ jobs:
           SRC="plugin-hub/eoplite-updates"
           if [ ! -f "${SRC}/EOPLite-client.jar" ]; then
             echo "::error::Missing ${SRC}/EOPLite-client.jar"
-            echo "Run eop-lite publish-release with secret PLUGIN_HUB_PUSH_TOKEN (classic PAT, repo scope, write access to asngdajwk-plugins)."
+            echo "Run eop-lite publish-release with secret PLUGIN_HUB_DISPATCH_TOKEN (classic PAT, repo scope, write access to asngdajwk-plugins)."
             exit 1
           fi
 
