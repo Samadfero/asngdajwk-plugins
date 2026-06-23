@@ -240,53 +240,23 @@ jobs:
           test -f hub-site/manifest/$(cat plugin-hub/runelite.version | tr -d '\n\r')_lite.js
 
       - name: Publish EOPLite client update feed
-        env:
-          EOPLITE_REPO_TOKEN: ${{ secrets.EOPLITE_REPO_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${EOPLITE_REPO_TOKEN:-}" ]; then
-            echo "::error::Missing secret EOPLITE_REPO_TOKEN. Add a classic PAT with repo scope (read access to Samadfero/eop-lite releases) under Settings → Secrets → Actions."
-            exit 1
-          fi
-
-          API="https://api.github.com/repos/Samadfero/eop-lite"
-          AUTH=(-H "Authorization: Bearer ${EOPLITE_REPO_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
-
-          HTTP="$(curl -sS -o /tmp/eoplite-release.json -w '%{http_code}' "${AUTH[@]}" "${API}/releases/latest")"
-          if [ "$HTTP" != "200" ]; then
-            echo "::error::GitHub API ${API}/releases/latest returned HTTP ${HTTP}"
-            cat /tmp/eoplite-release.json || true
-            echo ""
-            echo "Common fixes:"
-            echo "  - EOPLITE_REPO_TOKEN must be a classic PAT with repo scope"
-            echo "  - The token owner must have access to private repo Samadfero/eop-lite"
-            echo "  - If Samadfero is an org with SSO: authorize the PAT for SSO on the org"
-            echo "  - Ensure eop-lite has at least one GitHub Release (publish-release job green)"
-            exit 1
-          fi
-
-          RESPONSE="$(cat /tmp/eoplite-release.json)"
-          VERSION="$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')"
-          JAR_ID="$(echo "$RESPONSE" | jq -r '.assets[] | select(.name=="EOPLite-client.jar") | .id')"
-
-          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ -z "$JAR_ID" ] || [ "$JAR_ID" = "null" ]; then
-            echo "::error::Latest eop-lite release is missing tag or EOPLite-client.jar asset"
-            echo "$RESPONSE" | jq '.tag_name, .assets[].name' || true
+          SRC="plugin-hub/eoplite-updates"
+          if [ ! -f "${SRC}/EOPLite-client.jar" ]; then
+            echo "::error::Missing ${SRC}/EOPLite-client.jar"
+            echo "Run eop-lite publish-release with secret PLUGIN_HUB_PUSH_TOKEN (classic PAT, repo scope, write access to asngdajwk-plugins)."
             exit 1
           fi
 
           mkdir -p hub-site/eoplite
-          HTTP="$(curl -sS -o hub-site/eoplite/EOPLite-client.jar -w '%{http_code}' \
-            -H "Authorization: Bearer ${EOPLITE_REPO_TOKEN}" \
-            -H "Accept: application/octet-stream" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "${API}/releases/assets/${JAR_ID}")"
-          if [ "$HTTP" != "200" ]; then
-            echo "::error::Failed to download EOPLite-client.jar asset (HTTP ${HTTP})"
-            exit 1
-          fi
-
+          cp "${SRC}/EOPLite-client.jar" hub-site/eoplite/
           SHA256="$(sha256sum hub-site/eoplite/EOPLite-client.jar | awk '{print $1}')"
+          if [ -f "${SRC}/version.json" ]; then
+            VERSION="$(jq -r .version "${SRC}/version.json")"
+          else
+            VERSION="$(tr -d '\n\r' < plugin-hub/runelite.version)"
+          fi
           CLIENT_URL="https://samadfero.github.io/asngdajwk-plugins/eoplite/EOPLite-client.jar"
           printf '{"version":"%s","sha256":"%s","clientUrl":"%s"}\n' "$VERSION" "$SHA256" "$CLIENT_URL" > hub-site/eoplite/version.json
           ls -la hub-site/eoplite/
