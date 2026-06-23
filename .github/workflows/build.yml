@@ -9,6 +9,8 @@ on:
   push:
     branches: [master, main]
   workflow_dispatch:
+  repository_dispatch:
+    types: [eoplite-client-release]
 
 permissions:
   contents: read
@@ -236,6 +238,35 @@ jobs:
           PY
           ls -laR hub-site
           test -f hub-site/manifest/$(cat plugin-hub/runelite.version | tr -d '\n\r')_lite.js
+
+      - name: Publish EOPLite client update feed
+        env:
+          EOPLITE_REPO_TOKEN: ${{ secrets.EOPLITE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EOPLITE_REPO_TOKEN:-}" ]; then
+            echo "::warning::EOPLITE_REPO_TOKEN is not set; skipping EOPLite client update feed."
+            exit 0
+          fi
+
+          RESPONSE="$(curl -fsSL \
+            -H "Authorization: Bearer ${EOPLITE_REPO_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/Samadfero/eop-lite/releases/latest)"
+          VERSION="$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')"
+          JAR_URL="$(echo "$RESPONSE" | jq -r '.assets[] | select(.name=="EOPLite-client.jar") | .browser_download_url')"
+
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ -z "$JAR_URL" ] || [ "$JAR_URL" = "null" ]; then
+            echo "::warning::Could not read EOPLite release assets; skipping client update feed."
+            exit 0
+          fi
+
+          mkdir -p hub-site/eoplite
+          curl -fsSL -H "Authorization: Bearer ${EOPLITE_REPO_TOKEN}" -L "$JAR_URL" -o hub-site/eoplite/EOPLite-client.jar
+          SHA256="$(sha256sum hub-site/eoplite/EOPLite-client.jar | awk '{print $1}')"
+          CLIENT_URL="https://samadfero.github.io/asngdajwk-plugins/eoplite/EOPLite-client.jar"
+          printf '{"version":"%s","sha256":"%s","clientUrl":"%s"}\n' "$VERSION" "$SHA256" "$CLIENT_URL" > hub-site/eoplite/version.json
+          ls -la hub-site/eoplite/
 
       - name: Stop WebDAV
         if: always()

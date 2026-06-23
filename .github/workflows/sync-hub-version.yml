@@ -1,0 +1,46 @@
+name: Sync hub version from EOPLite release
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read latest EOPLite release version
+        id: release
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl -fsSL -H "Accept: application/vnd.github+json" \
+            -H "User-Agent: EOPLite-Hub-Sync" \
+            https://api.github.com/repos/Samadfero/eop-lite/releases/latest)"
+          VERSION="$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::Could not read latest EOPLite release version"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Latest EOPLite release: $VERSION"
+
+      - name: Bump runelite.version if needed
+        run: |
+          set -euo pipefail
+          CURRENT="$(tr -d '\n\r' < runelite.version)"
+          LATEST="${{ steps.release.outputs.version }}"
+          if [ "$CURRENT" = "$LATEST" ]; then
+            echo "Hub already on $LATEST"
+            exit 0
+          fi
+          echo "$LATEST" > runelite.version
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runelite.version
+          git commit -m "Auto-sync hub version to EOPLite $LATEST"
+          git push origin HEAD
