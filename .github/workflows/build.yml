@@ -245,8 +245,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${EOPLITE_REPO_TOKEN:-}" ]; then
-            echo "::warning::EOPLITE_REPO_TOKEN is not set; skipping EOPLite client update feed."
-            exit 0
+            echo "::error::Missing secret EOPLITE_REPO_TOKEN. Add a classic PAT with repo scope (read access to Samadfero/eop-lite releases) under Settings → Secrets → Actions."
+            exit 1
           fi
 
           RESPONSE="$(curl -fsSL \
