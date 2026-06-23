@@ -244,9 +244,9 @@ jobs:
           set -euo pipefail
           SRC="plugin-hub/eoplite-updates"
           if [ ! -f "${SRC}/EOPLite-client.jar" ]; then
-            echo "::error::Missing ${SRC}/EOPLite-client.jar"
-            echo "Run eop-lite publish-release with secret PLUGIN_HUB_DISPATCH_TOKEN (classic PAT, repo scope, write access to asngdajwk-plugins)."
-            exit 1
+            echo "::warning::Missing ${SRC}/EOPLite-client.jar — skipping /eoplite/ on Pages for now."
+            echo "Run eop-lite publish-release (needs PLUGIN_HUB_DISPATCH_TOKEN on Samadfero/eop-lite) to push client files here."
+            exit 0
           fi
 
           mkdir -p hub-site/eoplite
