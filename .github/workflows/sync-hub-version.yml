@@ -14,20 +14,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Read latest EOPLite release version
+      - name: Read latest EOPLite version
         id: release
         run: |
           set -euo pipefail
-          RESPONSE="$(curl -fsSL -H "Accept: application/vnd.github+json" \
-            -H "User-Agent: EOPLite-Hub-Sync" \
-            https://api.github.com/repos/Samadfero/eop-lite/releases/latest)"
-          VERSION="$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')"
-          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
-            echo "::error::Could not read latest EOPLite release version"
+          VERSION=""
+          if [ -f eoplite-updates/version.json ]; then
+            VERSION="$(jq -r '.version // empty' eoplite-updates/version.json)"
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="$(curl -fsSL -H "User-Agent: EOPLite-Hub-Sync" \
+              https://samadfero.github.io/asngdajwk-plugins/eoplite/version.json \
+              | jq -r '.version // empty')"
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read EOPLite version from eoplite-updates/version.json or public Pages feed"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Latest EOPLite release: $VERSION"
+          echo "Latest EOPLite version: $VERSION"
 
       - name: Bump runelite.version if needed
         run: |
