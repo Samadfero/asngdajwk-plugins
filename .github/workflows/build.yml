@@ -239,6 +239,23 @@ jobs:
           ls -laR hub-site
           test -f hub-site/manifest/$(cat plugin-hub/runelite.version | tr -d '\n\r')_lite.js
 
+      - name: Publish EOPLite client version manifest aliases
+        run: |
+          set -euo pipefail
+          HUB_VERSION="$(tr -d '\n\r' < plugin-hub/runelite.version)"
+          CLIENT_VERSION=""
+          if [ -f plugin-hub/eoplite-updates/version.json ]; then
+            CLIENT_VERSION="$(jq -r '.version // empty' plugin-hub/eoplite-updates/version.json)"
+          fi
+          if [ -n "$CLIENT_VERSION" ] && [ "$CLIENT_VERSION" != "$HUB_VERSION" ]; then
+            cp "hub-site/manifest/${HUB_VERSION}_lite.js" "hub-site/manifest/${CLIENT_VERSION}_lite.js"
+            cp "hub-site/manifest/${HUB_VERSION}_full.js" "hub-site/manifest/${CLIENT_VERSION}_full.js"
+            echo "Published manifest aliases: ${HUB_VERSION} -> ${CLIENT_VERSION}"
+            ls -la "hub-site/manifest/${CLIENT_VERSION}"_*.js
+          else
+            echo "No EOPLite client manifest alias needed (${CLIENT_VERSION:-none})"
+          fi
+
       - name: Publish EOPLite client update feed
         run: |
           set -euo pipefail
