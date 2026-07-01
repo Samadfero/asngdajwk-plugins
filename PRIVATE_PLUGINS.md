@@ -10,6 +10,7 @@ GitHub Actions must clone:
 - `Samadfero/eoplite-plus-one-highlighter` (private)
 - `Samadfero/clan-hall-exporter` (private)
 - `Samadfero/eoplite-profiles` (private)
+- `Samadfero/eoplite-chat-timestamps` (private)
 
 `GITHUB_TOKEN` alone **cannot** read other private repos.
 
