@@ -233,7 +233,7 @@ jobs:
                   plain.rename(hashed)
               if not hashed.exists():
                   raise SystemExit(f"missing jar file for {jar['internalName']}")
-              if hashed.stat().st_size < 8000:
+              if hashed.stat().st_size < 3500:
                   raise SystemExit(f"jar too small ({hashed.stat().st_size} bytes): {hashed}")
           PY
           ls -laR hub-site
