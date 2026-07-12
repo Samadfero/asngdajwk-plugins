@@ -1,0 +1,93 @@
+# Emergency republish: copy the last good hub manifests to newer client version names.
+# Use when the client updated but plugin rebuild is blocked (e.g. REPO_CREDS).
+name: Publish manifest version aliases
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_version:
+        description: Existing manifest version on Pages (e.g. 1.12.30)
+        required: true
+        default: "1.12.30"
+      target_versions:
+        description: Comma-separated client versions needing aliases (e.g. 1.12.31,1.12.31.1)
+        required: true
+        default: "1.12.31,1.12.31.1"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: asngdajwk-plugins-deploy
+  cancel-in-progress: true
+
+jobs:
+  publish-aliases:
+    if: vars.ENABLE_PUBLIC_PAGES == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Mirror current Pages site
+        run: |
+          set -euo pipefail
+          BASE="https://samadfero.github.io/asngdajwk-plugins"
+          mkdir -p hub-site/manifest hub-site/jar hub-site/icon hub-site/eoplite
+          curl -fsSL "${BASE}/manifest/${{ inputs.source_version }}_lite.js" -o "hub-site/manifest/${{ inputs.source_version }}_lite.js"
+          curl -fsSL "${BASE}/manifest/${{ inputs.source_version }}_full.js" -o "hub-site/manifest/${{ inputs.source_version }}_full.js"
+          curl -fsSL "${BASE}/eoplite/version.json" -o hub-site/eoplite/version.json
+          curl -fsSL "${BASE}/eoplite/EOPLite-client.jar" -o hub-site/eoplite/EOPLite-client.jar
+
+      - name: Copy manifest aliases
+        run: |
+          set -euo pipefail
+          SRC="${{ inputs.source_version }}"
+          IFS=',' read -ra TARGETS <<< "${{ inputs.target_versions }}"
+          for target in "${TARGETS[@]}"; do
+            target="$(echo "$target" | xargs)"
+            [ -n "$target" ] || continue
+            cp "hub-site/manifest/${SRC}_lite.js" "hub-site/manifest/${target}_lite.js"
+            cp "hub-site/manifest/${SRC}_full.js" "hub-site/manifest/${target}_full.js"
+            echo "Aliased ${SRC} -> ${target}"
+          done
+          ls -la hub-site/manifest/
+
+      - name: Mirror plugin jars referenced by manifest
+        run: |
+          set -euo pipefail
+          python3 << 'PY'
+          import json
+          import pathlib
+          import struct
+          import urllib.request
+
+          base = "https://samadfero.github.io/asngdajwk-plugins"
+          manifest_path = pathlib.Path("hub-site/manifest/${{ inputs.source_version }}_lite.js")
+          data = manifest_path.read_bytes()
+          siglen = struct.unpack(">I", data[:4])[0]
+          manifest = json.loads(data[4 + siglen :].decode())
+
+          jar_dir = pathlib.Path("hub-site/jar")
+          jar_dir.mkdir(parents=True, exist_ok=True)
+          for jar in manifest.get("jars", []):
+              name = f"{jar['internalName']}_{jar['jarHash']}.jar"
+              dest = jar_dir / name
+              if dest.exists():
+                  continue
+              url = f"{base}/jar/{name}"
+              print("Downloading", url)
+              urllib.request.urlretrieve(url, dest)
+          PY
+          ls -la hub-site/jar/ | head
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: hub-site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

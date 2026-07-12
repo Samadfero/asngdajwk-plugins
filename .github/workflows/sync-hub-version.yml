@@ -1,8 +1,6 @@
 name: Sync hub version from EOPLite release
 
 on:
-  schedule:
-    - cron: '0 7 * * *'
   workflow_dispatch:
 
 permissions:
